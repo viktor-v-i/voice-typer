@@ -16,6 +16,6 @@ def transcribe(audio_array):
     if _model is None:
         raise RuntimeError("Model not loaded. Call load_model() first.")
 
-    segments, _ = _model.transcribe(audio_array, beam_size=5, language="en")
+    segments, _ = _model.transcribe(audio_array, beam_size=5, language="en", vad_filter=True)
     text = " ".join(segment.text.strip() for segment in segments)
     return text.strip()

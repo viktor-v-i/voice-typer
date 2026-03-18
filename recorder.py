@@ -43,8 +43,7 @@ def stop_recording():
     audio = np.concatenate(_frames, axis=0).flatten()
 
     if _native_rate != WHISPER_RATE:
-        from scipy.signal import resample
-        num_samples = int(len(audio) * WHISPER_RATE / _native_rate)
-        audio = resample(audio, num_samples).astype(np.float32)
+        import soxr
+        audio = soxr.resample(audio, _native_rate, WHISPER_RATE, quality="VHQ")
 
     return audio
