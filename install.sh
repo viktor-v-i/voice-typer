@@ -8,7 +8,7 @@ sudo apt install -y xdotool xclip python3-xlib portaudio19-dev gir1.2-appindicat
 
 echo "[Voice Typer] Setting up Python virtual environment..."
 python3 -m venv "$SCRIPT_DIR/.venv"
-"$SCRIPT_DIR/.venv/bin/pip" install faster-whisper sounddevice numpy scipy pynput pystray Pillow
+"$SCRIPT_DIR/.venv/bin/pip" install faster-whisper sounddevice numpy soxr pynput pystray Pillow
 
 echo "[Voice Typer] Adding to autostart..."
 "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/main.py" --add-to-startup

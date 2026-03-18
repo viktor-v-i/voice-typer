@@ -9,4 +9,4 @@ pyautogui; sys_platform == "win32"
 pyperclip; sys_platform == "win32"
 # Linux
 pynput; sys_platform == "linux"
-scipy; sys_platform == "linux"
+soxr; sys_platform == "linux"
