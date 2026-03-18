@@ -74,42 +74,27 @@ pythonw main.py
 
 Use `pythonw` (not `python`) — this runs without a console window so the global hotkey works across all windows and monitors.
 
+To stop:
+
+```bash
+taskkill /f /im pythonw.exe
+```
+
 ### Linux
 
 ```bash
 nohup .venv/bin/python3 main.py > /dev/null 2>&1 &
 ```
 
+To stop:
+
+```bash
+pkill -f "voice-typer/main.py"
+```
+
 A mic icon appears in your system tray. The app is ready.
 
 On first run, faster-whisper downloads the `small` model (~244MB) to `~/.cache/huggingface/`. This is automatic and only happens once.
-
----
-
-## Auto-start
-
-### Windows
-
-```bash
-python main.py --add-to-startup
-```
-
-Creates a Task Scheduler task that runs at logon.
-
-### Linux
-
-```bash
-.venv/bin/python3 main.py --add-to-startup
-```
-
-Creates a desktop entry at `~/.config/autostart/voice-typer.desktop`.
-
-### Remove from startup
-
-```bash
-python main.py --remove-from-startup       # Windows
-.venv/bin/python3 main.py --remove-from-startup  # Linux
-```
 
 ---
 
@@ -133,19 +118,3 @@ MODEL_SIZE = "small"  # Options: tiny, base, small, medium, large
 
 The model downloads automatically on first run and is cached locally.
 
----
-
-## Linux notes
-
-- **X11 required** — `xdotool` and `pynput` do not work under Wayland. You must be running an X11 session.
-- **Virtual environment required on Ubuntu 24.04+** — PEP 668 means pip refuses to install system-wide. The install script handles this automatically.
-- **Tray icon** — the system tray icon may not appear in GNOME without AppIndicator support (`gir1.2-appindicator3-0.1`). The app works fine without the tray icon.
-- **Text input** — uses `xdotool type` for direct keystroke simulation. Clipboard-based paste is unreliable on Linux X11.
-- **Audio quality** — on Linux, audio is captured at the mic's native sample rate and resampled to 16kHz via `soxr` for best Whisper accuracy. PulseAudio/PipeWire's built-in resampler degrades transcription quality.
-- **Restarting** — kill existing instances before restarting: `pkill -f "voice-typer/main.py"`
-
----
-
-## Quitting
-
-Right-click the tray icon → **Quit**.
