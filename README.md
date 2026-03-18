@@ -41,8 +41,10 @@ install.bat
 ## Running manually
 
 ```bash
-python main.py
+pythonw main.py
 ```
+
+Use `pythonw` (not `python`) — this runs without a console window so the global hotkey works across all windows and monitors. You can close the terminal after launching it.
 
 A mic icon appears in your system tray. The app is ready.
 
@@ -89,7 +91,7 @@ The model downloads automatically on first run and is cached locally.
 ```
 voice-typer/
 ├── main.py           # Entry point — wires all modules together
-├── hotkey.py         # Global Ctrl+Space hotkey listener (pynput)
+├── hotkey.py         # Global Ctrl+Space hotkey listener (keyboard)
 ├── recorder.py       # Microphone capture (sounddevice)
 ├── transcriber.py    # Local Whisper transcription (faster-whisper)
 ├── typer.py          # Types text into active window (pyperclip + pyautogui)
