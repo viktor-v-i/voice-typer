@@ -76,7 +76,7 @@ Use `pythonw`, not `python`. On first run, faster-whisper downloads the `small` 
 ```bash
 python main.py --add-to-startup
 ```
-Writes to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` using `winreg`. The registry entry uses `pythonw.exe` automatically.
+Creates a Task Scheduler task (`VoiceTyper`) via `schtasks` that runs at logon with highest privileges. Uses `pythonw.exe` automatically. Task Scheduler is used instead of the registry Run key because the registry fires too early at boot — the keyboard hook registers but receives no events until the desktop input session is fully initialized.
 
 ---
 
@@ -160,7 +160,8 @@ _model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
 ### Windows
 - **Hotkey not working globally** - make sure you're running with `pythonw.exe`, not `python.exe`.
 - **Text not typing** - ensure target window has focus. Elevated (admin) windows block pyautogui input.
-- **App not in tray after reboot** - verify registry: `reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v VoiceTyper`
+- **App not in tray after reboot** - verify task exists: `schtasks /query /tn VoiceTyper`
+- **Hotkey not working after reboot** - do not use registry Run key for autostart; use Task Scheduler (`python main.py --add-to-startup`). The registry fires before the desktop input session is ready, causing the keyboard hook to silently receive no events.
 
 ### Linux
 - **UnicodeEncodeError on startup** - tray tooltip contains non-ASCII characters (em dashes etc). Use only plain ASCII in `tray.py` tooltip strings.

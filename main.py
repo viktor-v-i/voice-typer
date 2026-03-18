@@ -43,19 +43,19 @@ def quit_app(icon=None, item=None):
 
 def add_to_startup():
     if sys.platform == "win32":
-        import winreg
+        import subprocess
         script_path = os.path.abspath(__file__)
         pythonw = sys.executable.replace("python.exe", "pythonw.exe")
         cmd = f'"{pythonw}" "{script_path}"'
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
-            0,
-            winreg.KEY_SET_VALUE,
+        result = subprocess.run(
+            ["schtasks", "/create", "/tn", "VoiceTyper", "/tr", cmd,
+             "/sc", "onlogon", "/rl", "highest", "/f"],
+            capture_output=True, text=True,
         )
-        winreg.SetValueEx(key, "VoiceTyper", 0, winreg.REG_SZ, cmd)
-        winreg.CloseKey(key)
-        print(f"[Voice Typer] Added to Windows startup: {cmd}")
+        if result.returncode == 0:
+            print(f"[Voice Typer] Added to Windows startup (Task Scheduler): {cmd}")
+        else:
+            print(f"[Voice Typer] Failed to add to startup: {result.stderr.strip()}")
     else:
         autostart_dir = os.path.expanduser("~/.config/autostart")
         os.makedirs(autostart_dir, exist_ok=True)
@@ -78,19 +78,15 @@ X-GNOME-Autostart-enabled=true
 
 def remove_from_startup():
     if sys.platform == "win32":
-        import winreg
-        try:
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Run",
-                0,
-                winreg.KEY_SET_VALUE,
-            )
-            winreg.DeleteValue(key, "VoiceTyper")
-            winreg.CloseKey(key)
-            print("[Voice Typer] Removed from Windows startup.")
-        except FileNotFoundError:
-            print("[Voice Typer] Not in startup registry.")
+        import subprocess
+        result = subprocess.run(
+            ["schtasks", "/delete", "/tn", "VoiceTyper", "/f"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            print("[Voice Typer] Removed from Windows startup (Task Scheduler).")
+        else:
+            print("[Voice Typer] Not found in Task Scheduler.")
     else:
         path = os.path.expanduser("~/.config/autostart/voice-typer.desktop")
         if os.path.exists(path):
