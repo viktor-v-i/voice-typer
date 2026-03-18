@@ -45,11 +45,11 @@ def add_to_startup():
     if sys.platform == "win32":
         import subprocess
         script_path = os.path.abspath(__file__)
-        pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
         cmd = f'"{pythonw}" "{script_path}"'
         result = subprocess.run(
             ["schtasks", "/create", "/tn", "VoiceTyper", "/tr", cmd,
-             "/sc", "onlogon", "/rl", "highest", "/f"],
+             "/sc", "onlogon", "/rl", "highest", "/delay", "0000:10", "/f"],
             capture_output=True, text=True,
         )
         if result.returncode == 0:
