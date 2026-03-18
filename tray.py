@@ -42,7 +42,7 @@ def start(quit_callback):
     _tray_icon = pystray.Icon(
         "voice-typer",
         icon_img,
-        "Voice Typer — idle (Caps Lock to record)",
+        "Voice Typer - idle (Ctrl+Space to record)",
         menu=_build_menu(quit_callback),
     )
     # Run in a background thread so it doesn't block main
@@ -56,9 +56,9 @@ def set_recording(recording: bool):
     if _tray_icon:
         _tray_icon.icon = _make_icon(recording=recording)
         _tray_icon.title = (
-            "Voice Typer — RECORDING (press Caps Lock to stop)"
+            "Voice Typer - RECORDING (press Ctrl+Space to stop)"
             if recording
-            else "Voice Typer — idle (Caps Lock to record)"
+            else "Voice Typer - idle (Ctrl+Space to record)"
         )
 
 

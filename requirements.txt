@@ -1,9 +1,12 @@
 faster-whisper
 sounddevice
 numpy
-pynput
-keyboard
-pyautogui
-pyperclip
 pystray
 Pillow
+# Windows
+keyboard; sys_platform == "win32"
+pyautogui; sys_platform == "win32"
+pyperclip; sys_platform == "win32"
+# Linux
+pynput; sys_platform == "linux"
+scipy; sys_platform == "linux"

@@ -1,4 +1,4 @@
-# Voice Typer — Claude Agent Guide
+# Voice Typer - Claude Agent Guide
 
 This document tells a Claude agent everything needed to understand, reproduce, modify, and extend this project from scratch.
 
@@ -6,21 +6,29 @@ This document tells a Claude agent everything needed to understand, reproduce, m
 
 ## What this is
 
-A background utility that records microphone input on a global hotkey (Ctrl+Space), transcribes it locally using faster-whisper (no API key, no internet), and types the result into whatever window has keyboard focus. Runs as a system tray app. Currently implemented for Windows; Linux port is planned (see bottom of this file).
+A background utility that records microphone input on a global hotkey (Ctrl+Space), transcribes it locally using faster-whisper (no API key, no internet), and types the result into whatever window has keyboard focus. Runs as a system tray app. Cross-platform: works on Windows and Linux (X11).
 
 ---
 
 ## Architecture
 
-Each concern is isolated in its own module. `main.py` wires them together.
+Each concern is isolated in its own module. `main.py` wires them together. Platform-specific code uses `sys.platform == "win32"` branching within each module.
 
 ```
-hotkey.py      →  detects Ctrl+Space globally via `keyboard` library
-recorder.py    →  captures mic audio as float32 numpy array at 16kHz
-transcriber.py →  runs faster-whisper on the audio, returns text string
-typer.py       →  pastes text into active window via clipboard (pyperclip + pyautogui)
-tray.py        →  pystray system tray icon, two states: idle (grey) / recording (red)
-main.py        →  loads model, starts hotkey listener + tray, handles state transitions
+hotkey.py      ->  detects Ctrl+Space globally
+                   Windows: `keyboard` library (hooks globally without needing focus)
+                   Linux: `pynput` (keyboard lib requires root on Linux)
+recorder.py    ->  captures mic audio as float32 numpy array
+                   Windows: records directly at 16kHz (driver handles it well)
+                   Linux: records at mic's native rate, resamples to 16kHz via scipy
+transcriber.py ->  runs faster-whisper on the audio, returns text string (cross-platform)
+typer.py       ->  types text into active window
+                   Windows: pyperclip + pyautogui (clipboard paste via Ctrl+V)
+                   Linux: xdotool type (direct keystroke simulation, no clipboard)
+tray.py        ->  pystray system tray icon, two states: idle (grey) / recording (red) (cross-platform)
+main.py        ->  loads model, starts hotkey listener + tray, handles state transitions
+                   Windows: winreg for auto-start
+                   Linux: XDG ~/.config/autostart/ desktop entry
 ```
 
 ---
@@ -28,16 +36,26 @@ main.py        →  loads model, starts hotkey listener + tray, handles state tr
 ## Key design decisions
 
 - **faster-whisper over openai-whisper**: No PyTorch dependency (~2GB). Uses CTranslate2 backend, pip-installable, fast on CPU.
-- **Clipboard paste over keystroke simulation**: `pyautogui.typewrite()` breaks on unicode/special characters. Using `pyperclip.copy()` + `Ctrl+V` is universal and reliable.
 - **Toggle model (not push-to-talk)**: Press once to start, press again to stop. More natural for longer dictation than holding a key.
-- **`keyboard` library over `pynput` on Windows**: `pynput` only captured keys when the terminal had focus. `keyboard` hooks globally regardless of focus.
-- **`pythonw.exe` over `python.exe`**: Must be launched with `pythonw` (no console window). When a terminal window is attached, it intercepts Ctrl+Space before the global hook sees it. Running detached fixes this. The `--add-to-startup` flag handles this automatically.
 - **Tray icon drawn with Pillow**: No external image files. Icon is generated programmatically as a mic shape in grey (idle) or red (recording).
 - **Transcription runs on a background thread**: Keeps the hotkey listener responsive while Whisper processes audio.
+- **No em dashes or unicode in tray tooltips**: pystray's X11 backend uses Latin-1 encoding for WM_NAME. Unicode characters like em dashes cause UnicodeEncodeError. Use plain ASCII only in tooltip strings.
+
+### Windows-specific decisions
+- **`keyboard` library over `pynput`**: `pynput` only captured keys when the terminal had focus. `keyboard` hooks globally regardless of focus.
+- **Clipboard paste (pyperclip + pyautogui)**: `pyautogui.typewrite()` breaks on unicode/special characters. Using `pyperclip.copy()` + `Ctrl+V` is universal and reliable on Windows.
+- **`pythonw.exe` over `python.exe`**: Must be launched with `pythonw` (no console window). When a terminal window is attached, it intercepts Ctrl+Space before the global hook sees it.
+
+### Linux-specific decisions
+- **`pynput` over `keyboard`**: The `keyboard` library requires root on Linux. `pynput` works without root on X11.
+- **`xdotool type` over clipboard paste**: Clipboard-based paste (xclip + xdotool key ctrl+v) does NOT work reliably on Linux. The xdotool keystroke fires but the paste never actually happens in the target window. `xdotool type --clearmodifiers --delay 12` simulates keystrokes directly and works in both terminals and browsers.
+- **Native sample rate + scipy resampling**: On Linux, PulseAudio/PipeWire resamples audio to 16kHz using a fast but low-quality algorithm, degrading Whisper accuracy (~50-60% vs ~80% on Windows with same model). Fix: capture at the mic's native rate (usually 44.1kHz or 48kHz) and resample to 16kHz in Python with `scipy.signal.resample`. The resample step adds ~1-5ms of latency.
+- **No `pythonw` needed**: On Linux, run `python3 main.py &` or `nohup ... &`. No console interception issue.
+- **Virtual environment required on Ubuntu 24.04+**: PEP 668 means pip refuses to install system-wide. Must use a venv.
 
 ---
 
-## Reproducing from scratch (Windows)
+## Setup - Windows
 
 ### 1. Prerequisites
 - Windows 10/11
@@ -48,21 +66,13 @@ main.py        →  loads model, starts hotkey listener + tray, handles state tr
 pip install faster-whisper sounddevice numpy keyboard pyautogui pyperclip pystray Pillow
 ```
 
-### 3. File creation order
-1. `recorder.py` — no dependencies
-2. `transcriber.py` — no dependencies
-3. `typer.py` — no dependencies
-4. `hotkey.py` — depends on `keyboard`
-5. `tray.py` — depends on Pillow, pystray
-6. `main.py` — imports all of the above
-
-### 4. First run
+### 3. First run
 ```bash
 pythonw main.py
 ```
 Use `pythonw`, not `python`. On first run, faster-whisper downloads the `small` model (~244MB) to `~/.cache/huggingface/`. This is automatic and only happens once.
 
-### 5. Auto-start
+### 4. Auto-start
 ```bash
 python main.py --add-to-startup
 ```
@@ -70,14 +80,56 @@ Writes to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` using `winreg`. T
 
 ---
 
+## Setup - Linux (Ubuntu/Debian, X11)
+
+### 1. Prerequisites
+- Ubuntu 22.04+ / Debian 12+ (tested on Ubuntu 24.04)
+- Python 3.9+
+- X11 session (Wayland not yet supported)
+- A microphone
+
+### 2. Install system dependencies
+```bash
+sudo apt install -y xdotool xclip python3-xlib portaudio19-dev gir1.2-appindicator3-0.1
+```
+
+### 3. Create virtual environment and install Python dependencies
+```bash
+cd voice-typer
+python3 -m venv .venv
+.venv/bin/pip install faster-whisper sounddevice numpy scipy pynput pystray Pillow
+```
+
+### 4. First run
+```bash
+nohup .venv/bin/python3 main.py > /dev/null 2>&1 &
+```
+On first run, faster-whisper downloads the `small` model (~244MB) to `~/.cache/huggingface/`.
+
+The HF Hub "unauthenticated request" warning is normal and can be ignored - the model is public.
+
+### 5. Restart
+```bash
+pkill -f "voice-typer/main.py"; nohup ~/voice-typer/.venv/bin/python3 ~/voice-typer/main.py > /dev/null 2>&1 &
+```
+
+### 6. Auto-start
+```bash
+.venv/bin/python3 main.py --add-to-startup
+```
+Creates `~/.config/autostart/voice-typer.desktop`. The desktop entry points to the venv python if available.
+
+### 7. Tray icon
+pystray falls back to the Xorg backend (raw X11 window) if AppIndicator/Ayatana is not available. The Xorg backend works but the icon may not appear in modern GNOME panels. Installing `gir1.2-appindicator3-0.1` helps but also requires PyGObject (`pip install PyGObject`) which needs dev libraries (`libcairo2-dev`, `libgirepository-2.0-dev`). The app works fine without the tray icon.
+
+---
+
 ## Modifying the hotkey
 
-Edit `hotkey.py`. Uses the `keyboard` library — change the combo string in `keyboard.add_hotkey()`:
+Edit `hotkey.py`. The hotkey is Ctrl+Space on both platforms.
 
-```python
-keyboard.add_hotkey("ctrl+space", _toggle, suppress=True)
-# Other examples: "alt+space", "ctrl+shift+r", "caps lock"
-```
+Windows uses `keyboard.add_hotkey("ctrl+space", ...)`.
+Linux uses `pynput.keyboard.Listener` checking for Ctrl + Space.
 
 ---
 
@@ -88,6 +140,14 @@ Edit `transcriber.py`:
 MODEL_SIZE = "small"  # tiny | base | small | medium | large
 ```
 
+| Model  | Size   | Speed (CPU) | Accuracy |
+|--------|--------|-------------|----------|
+| tiny   | 39MB   | ~0.5s       | Basic    |
+| base   | 74MB   | ~0.8s       | OK       |
+| small  | 244MB  | ~1-2s       | Good     |
+| medium | 769MB  | ~3-4s       | Better   |
+| large  | 1.5GB  | ~6-8s       | Best     |
+
 For GPU acceleration (Nvidia):
 ```python
 _model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
@@ -95,114 +155,38 @@ _model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
 
 ---
 
-## Common issues (Windows)
+## Common issues
 
-**Hotkey not working globally** — make sure you're running with `pythonw.exe`, not `python.exe`. A visible terminal window intercepts Ctrl+Space.
+### Windows
+- **Hotkey not working globally** - make sure you're running with `pythonw.exe`, not `python.exe`.
+- **Text not typing** - ensure target window has focus. Elevated (admin) windows block pyautogui input.
+- **App not in tray after reboot** - verify registry: `reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v VoiceTyper`
 
-**No audio captured** — check mic: `python -c "import sounddevice; print(sounddevice.query_devices())"`
+### Linux
+- **UnicodeEncodeError on startup** - tray tooltip contains non-ASCII characters (em dashes etc). Use only plain ASCII in `tray.py` tooltip strings.
+- **xdotool clipboard paste not working** - do NOT use `xdotool key ctrl+v` or `xdotool key ctrl+shift+v` for pasting. It fires the keystroke but the paste doesn't happen. Use `xdotool type --clearmodifiers` instead.
+- **Low transcription accuracy** - check that `recorder.py` captures at native sample rate and resamples via scipy. If recording directly at 16kHz, PulseAudio/PipeWire's internal resampler degrades audio quality significantly.
+- **pip refuses to install** - Ubuntu 24.04+ requires a virtual environment (PEP 668). Use `python3 -m venv .venv`.
+- **Multiple instances running** - kill all before restarting: `pkill -f "voice-typer/main.py"`
 
-**Text not typing** — ensure target window has focus before pressing Ctrl+Space. Elevated (admin) windows block pyautogui input.
-
-**Whisper download slow** — set `HF_TOKEN` env var for higher rate limits (free HuggingFace account). Not required.
-
-**App not in tray after reboot** — verify registry: `reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v VoiceTyper`
+### Both platforms
+- **No audio captured** - check mic: `python -c "import sounddevice; print(sounddevice.query_devices())"`
+- **Whisper download slow** - set `HF_TOKEN` env var for higher rate limits (free HuggingFace account). Not required.
 
 ---
 
-## Linux port — what needs to change
+## Project structure
 
-The codebase is mostly cross-platform. These are the parts that need updating:
-
-### 1. `hotkey.py` — swap `keyboard` for `pynput`
-The `keyboard` library requires root on Linux. `pynput` works without root on X11/Wayland and is the right choice here.
-
-```python
-# Replace keyboard.add_hotkey with pynput listener
-from pynput import keyboard
-
-_ctrl_held = False
-_recording = False
-
-def _on_press(key):
-    global _ctrl_held, _recording
-    if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
-        _ctrl_held = True
-    if key == keyboard.Key.space and _ctrl_held:
-        # toggle recording
-
-def _on_release(key):
-    global _ctrl_held
-    if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
-        _ctrl_held = False
-
-listener = keyboard.Listener(on_press=_on_press, on_release=_on_release)
-listener.start()
 ```
-
-May need `python3-xlib` on X11: `sudo apt install python3-xlib`
-
-### 2. `typer.py` — replace pyautogui/pyperclip with xdotool
-`pyautogui` Ctrl+V paste is less reliable on Linux. `xdotool` is more robust on X11:
-
-```bash
-sudo apt install xdotool xclip
+voice-typer/
+├── main.py           # Entry point - wires all modules, handles auto-start
+├── hotkey.py         # Global Ctrl+Space hotkey (keyboard on Windows, pynput on Linux)
+├── recorder.py       # Microphone capture (sounddevice, scipy resampling on Linux)
+├── transcriber.py    # Local Whisper transcription (faster-whisper)
+├── typer.py          # Types text into active window (pyautogui on Windows, xdotool on Linux)
+├── tray.py           # System tray icon with idle/recording states (pystray)
+├── requirements.txt  # Python dependencies
+├── install.bat       # Windows one-shot setup
+├── install.sh        # Linux one-shot setup (Ubuntu/Debian)
+└── CLAUDE.md         # This file
 ```
-
-```python
-import subprocess
-
-def type_text_unicode(text):
-    # Copy to clipboard via xclip, then paste via xdotool
-    subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode(), check=True)
-    subprocess.run(["xdotool", "key", "ctrl+v"], check=True)
-```
-
-For Wayland, use `wl-clipboard` + `ydotool` instead.
-
-### 3. `main.py` — replace winreg auto-start with XDG autostart
-Instead of the Windows registry, Linux uses `~/.config/autostart/`:
-
-```python
-def add_to_startup():
-    import os
-    autostart_dir = os.path.expanduser("~/.config/autostart")
-    os.makedirs(autostart_dir, exist_ok=True)
-    desktop_entry = f"""[Desktop Entry]
-Type=Application
-Name=Voice Typer
-Exec=python3 {os.path.abspath(__file__)}
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-"""
-    with open(os.path.join(autostart_dir, "voice-typer.desktop"), "w") as f:
-        f.write(desktop_entry)
-```
-
-### 4. No `pythonw` needed on Linux
-On Linux, just run `python3 main.py &` or via the autostart `.desktop` entry. No console interception issue.
-
-### 5. Add `install.sh`
-```bash
-#!/bin/bash
-sudo apt install python3-pip xdotool xclip python3-xlib portaudio19-dev -y
-pip3 install faster-whisper sounddevice numpy pynput pyautogui pyperclip pystray Pillow
-python3 main.py --add-to-startup
-echo "Done. Run: python3 main.py"
-```
-
-### 6. `tray.py` — may need AppIndicator
-`pystray` on Linux requires either `AppIndicator3` or `gtk` backend. Install:
-```bash
-sudo apt install gir1.2-appindicator3-0.1
-```
-The pystray code itself doesn't need to change.
-
-### Summary of Linux changes
-| File | Change |
-|------|--------|
-| `hotkey.py` | Replace `keyboard` with `pynput` |
-| `typer.py` | Replace pyperclip+pyautogui with xclip+xdotool |
-| `main.py` | Replace `winreg` startup with XDG `.desktop` file |
-| `install.sh` | New file — Linux setup script |
-| `install.bat` | Windows only, keep as-is |
