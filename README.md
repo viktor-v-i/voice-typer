@@ -80,6 +80,12 @@ To stop:
 taskkill /f /im pythonw.exe
 ```
 
+> **Note:** If installed via the Microsoft Store, Python's executable may be versioned (e.g. `pythonw3.13.exe`). If the above command fails, find the exact name first:
+> ```bash
+> tasklist | findstr python
+> ```
+> Then use that name: `taskkill /f /im pythonw3.13.exe`
+
 ### Linux
 
 ```bash
